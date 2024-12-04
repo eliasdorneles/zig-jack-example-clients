@@ -93,9 +93,6 @@ pub fn main() !void {
     }
 
     calc_note_freqs(c.jack_get_sample_rate(client));
-    for (&note_freqs, 0..) |*item, i| {
-        print("note_freqs[{}] = {d}\n", .{ i, item.* });
-    }
 
     _ = c.jack_set_process_callback(client, process, null);
 
