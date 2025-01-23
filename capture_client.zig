@@ -1,19 +1,95 @@
 const std = @import("std");
+const print = std.debug.print;
 
-const program_name = "capture_client";
-const errexit = 1;
+const c = @cImport({
+    @cInclude("jack/jack.h");
+    @cInclude("jack/midiport.h");
+    @cInclude("sndfile.h");
+});
 
-var verbose = false;
-var buf_size: u32 = 16384;
-var output_path: []u8 = undefined;
-var duration: u32 = 0;
-var ports: [][]u8 = undefined;
+var PROGRAM_NAME: []const u8 = undefined;
+
+const USAGE_FMT =
+    \\Usage: {s} [-B buf_size] [-o OUT_WAV_FILE] DURATION PORT1 [PORT2]...
+    \\
+    \\Options:
+    \\  -B buf_size    Buffer size in bytes (default: 16384)
+    \\  -o OUT_WAV_FILE  Output WAV file path (default: wave_out.wav)
+    \\  -v             Verbose output
+    \\
+    \\Arguments:
+    \\  DURATION       Duration in seconds
+    \\  port1 [ port2 ... ]  List of ports
+    \\
+    \\
+;
+
+// CLI options
+const CliArgs = struct {
+    verbose: bool = false,
+    buf_size: u32 = 16384,
+    output_path: []const u8 = "wave_out.wav",
+    duration: u32 = 0,
+    ports: [][]u8 = undefined,
+};
 
 fn display_usage() void {
-    std.debug.print(
-        "Usage: {s} [-B buf_size] <output.wav> <duration_in_seconds> port1 [ port2 ... ]\n",
-        .{program_name},
-    );
+    print(USAGE_FMT, .{PROGRAM_NAME});
+}
+
+const ArgParseError = error{ MissingArgs, InvalidArgs };
+
+fn parseArgs(argv: [][]u8) ArgParseError!CliArgs {
+    PROGRAM_NAME = std.fs.path.basename(argv[0]);
+    var args = CliArgs{};
+
+    // parse optional arguments i.e. anything that start with a dash '-'
+    var optind: usize = 1;
+    while (optind < argv.len and argv[optind][0] == '-') {
+        if (std.mem.eql(u8, argv[optind], "-v")) {
+            args.verbose = true;
+        } else if (std.mem.eql(u8, argv[optind], "-B")) {
+            if (optind + 1 >= argv.len) {
+                display_usage();
+                return error.MissingArgs;
+            }
+            optind += 1;
+            args.buf_size = std.fmt.parseInt(u32, argv[optind], 10) catch {
+                display_usage();
+                print("Invalid buffer size: '{s}'\n", .{argv[optind]});
+                return error.InvalidArgs;
+            };
+        } else if (std.mem.eql(u8, argv[optind], "-o")) {
+            if (optind + 1 >= argv.len) {
+                display_usage();
+                return error.MissingArgs;
+            }
+            optind += 1;
+            args.output_path = argv[optind];
+        } else {
+            display_usage();
+            print("Unknown option: {s}\n", .{argv[optind]});
+            return error.InvalidArgs;
+        }
+        optind += 1;
+    }
+
+    // validate and parse positional arguments
+    if (argv.len - optind < 2) {
+        display_usage();
+        return error.MissingArgs;
+    }
+
+    args.duration = std.fmt.parseInt(u32, argv[optind], 10) catch {
+        display_usage();
+        print("Invalid duration: '{s}'\n", .{argv[optind]});
+        return error.InvalidArgs;
+    };
+    optind += 1;
+
+    args.ports = argv[optind..];
+
+    return args;
 }
 
 pub fn main() !u8 {
@@ -21,57 +97,20 @@ pub fn main() !u8 {
     const allocator = gpa.allocator();
     defer _ = gpa.deinit();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const argv = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, argv);
 
-    // argument parsing starts here
-    var optind: usize = 1;
-    while (optind < args.len and args[optind][0] == '-') {
-        if (std.mem.eql(u8, args[optind], "-v")) {
-            verbose = true;
-        } else if (std.mem.eql(u8, args[optind], "-B")) {
-            if (optind + 1 >= args.len) {
-                display_usage();
-                std.debug.print("Option -B requires an argument\n", .{});
-                return errexit;
-            }
-            optind += 1;
-            buf_size = std.fmt.parseInt(u32, args[optind], 10) catch {
-                display_usage();
-                std.debug.print("Invalid buffer size: '{s}'\n", .{args[optind]});
-                return errexit;
-            };
-        } else {
-            display_usage();
-            std.debug.print("Unknown option: {s}\n", .{args[optind]});
-            return errexit;
-        }
-        optind += 1;
-    }
-
-    if (args.len - optind < 3) {
-        display_usage();
-        return errexit;
-    }
-
-    output_path = args[optind];
-    optind += 1;
-    duration = std.fmt.parseInt(u32, args[optind], 10) catch {
-        display_usage();
-        std.debug.print("Invalid duration: '{s}'\n", .{args[2]});
-        return errexit;
+    const args = parseArgs(argv) catch {
+        return 1;
     };
-    optind += 1;
 
-    ports = args[optind..];
-    // ok, we're done with argument parsing
-
-    std.debug.print("Verbose: {}\n", .{verbose});
-    std.debug.print("Output path: {s}\n", .{output_path});
-    std.debug.print("Duration: {d}\n", .{duration});
-    std.debug.print("Buffer size: {}\n", .{buf_size});
-    for (ports, 1..) |port, n_port| {
-        std.debug.print("Port {d}: {s}\n", .{ n_port, port });
+    // print parsed arguments
+    print("Verbose: {}\n", .{args.verbose});
+    print("Output path: {s}\n", .{args.output_path});
+    print("Duration: {d} seconds\n", .{args.duration});
+    print("Buffer size: {}\n", .{args.buf_size});
+    for (args.ports, 1..) |port, n_port| {
+        print("Port {d}: {s}\n", .{ n_port, port });
     }
     return 0;
 }
