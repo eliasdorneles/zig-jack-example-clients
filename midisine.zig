@@ -7,7 +7,6 @@ const print = std.debug.print;
 
 const math = std.math;
 
-var client: ?*c.jack_client_t = undefined;
 var input_port: ?*c.jack_port_t = undefined;
 var output_port: ?*c.jack_port_t = undefined;
 
@@ -81,7 +80,7 @@ fn process(nframes: c.jack_nframes_t, arg: ?*anyopaque) callconv(.C) c_int {
 }
 
 pub fn main() !void {
-    client = c.jack_client_open("sine_client", c.JackNullOption, null);
+    const client: ?*c.jack_client_t = c.jack_client_open("sine_client", c.JackNullOption, null);
     if (client == null) {
         print("Failed to connect to JACK -- is JACK server running?\n", .{});
         std.process.exit(1);

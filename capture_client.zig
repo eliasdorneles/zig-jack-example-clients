@@ -92,6 +92,19 @@ fn parseArgs(argv: [][]u8) ArgParseError!CliArgs {
     return args;
 }
 
+fn printArgs(args: CliArgs) void {
+    print("Verbose: {}\n", .{args.verbose});
+    print("Output path: {s}\n", .{args.output_path});
+    print("Duration: {d} seconds\n", .{args.duration});
+    print("Buffer size: {}\n", .{args.buf_size});
+    for (args.ports, 1..) |port, n_port| {
+        print("Port {d}: {s}\n", .{ n_port, port });
+    }
+}
+
+var client: ?*c.jack_client_t = undefined;
+var input_ports: []*c.jack_port_t = undefined;
+
 pub fn main() !u8 {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -104,13 +117,14 @@ pub fn main() !u8 {
         return 1;
     };
 
-    // print parsed arguments
-    print("Verbose: {}\n", .{args.verbose});
-    print("Output path: {s}\n", .{args.output_path});
-    print("Duration: {d} seconds\n", .{args.duration});
-    print("Buffer size: {}\n", .{args.buf_size});
-    for (args.ports, 1..) |port, n_port| {
-        print("Port {d}: {s}\n", .{ n_port, port });
+    if (args.verbose) {
+        printArgs(args);
+    }
+
+    client = c.jack_client_open("capture_client", c.JackNullOption, null);
+    if (client == null) {
+        print("Failed to connect to JACK -- is JACK server running?\n", .{});
+        std.process.exit(1);
     }
     return 0;
 }
