@@ -1,9 +1,12 @@
 # Zig + JACK code examples
 
-I am porting some example clients from [JACK example
+I ported some example clients from [JACK example
 clients](https://github.com/jackaudio/jack-example-tools/tree/main/example-clients)
-to Zig.
+to [Zig](https://ziglang.org/).
 
+> If you're interested in these, you might be also interested in [the Odin
+> version of the JACK example
+> clients](https://github.com/eliasdorneles/odin-jack-example-clients).
 
 ## How to run
 
